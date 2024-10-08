@@ -69,6 +69,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/google/certificate-transparency-go/x509/brainpool"
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 	"golang.org/x/crypto/ed25519"
@@ -633,6 +634,46 @@ var (
 	OIDNamedCurveP192 = asn1.ObjectIdentifier{1, 2, 840, 10045, 3, 1, 1}
 )
 
+type OIDToCurveFunc func(oid asn1.ObjectIdentifier) elliptic.Curve
+type CurveToOIDFunc func(curve elliptic.Curve) (asn1.ObjectIdentifier, bool)
+
+var (
+	OIDNamedCurveBrainpoolP256r1 = asn1.ObjectIdentifier{1, 3, 36, 3, 3, 2, 8, 1, 1, 7}
+	OIDNamedCurveBrainpoolP320r1 = asn1.ObjectIdentifier{1, 3, 36, 3, 3, 2, 8, 1, 1, 9}
+	OIDNamedCurveBrainpoolP384r1 = asn1.ObjectIdentifier{1, 3, 36, 3, 3, 2, 8, 1, 1, 11}
+	OIDNamedCurveBrainpoolP512r1 = asn1.ObjectIdentifier{1, 3, 36, 3, 3, 2, 8, 1, 1, 13}
+)
+
+var (
+	CustomIOIDToCurveFunc OIDToCurveFunc = func(oid asn1.ObjectIdentifier) elliptic.Curve {
+		switch {
+		case oid.Equal(OIDNamedCurveBrainpoolP256r1):
+			return brainpool.P256r1()
+		case oid.Equal(OIDNamedCurveBrainpoolP320r1):
+			return brainpool.P320r1()
+		case oid.Equal(OIDNamedCurveBrainpoolP384r1):
+			return brainpool.P384r1()
+		case oid.Equal(OIDNamedCurveBrainpoolP512r1):
+			return brainpool.P512r1()
+		}
+
+		return nil
+	}
+	CustomCurveToOIDFunc CurveToOIDFunc = func(curve elliptic.Curve) (asn1.ObjectIdentifier, bool) {
+		switch curve {
+		case brainpool.P256r1():
+			return OIDNamedCurveBrainpoolP256r1, true
+		case brainpool.P320r1():
+			return OIDNamedCurveBrainpoolP320r1, true
+		case brainpool.P384r1():
+			return OIDNamedCurveBrainpoolP384r1, true
+		case brainpool.P512r1():
+			return OIDNamedCurveBrainpoolP512r1, true
+		}
+		return nil, false
+	}
+)
+
 func namedCurveFromOID(oid asn1.ObjectIdentifier, nfe *NonFatalErrors) elliptic.Curve {
 	switch {
 	case oid.Equal(OIDNamedCurveP224):
@@ -647,6 +688,10 @@ func namedCurveFromOID(oid asn1.ObjectIdentifier, nfe *NonFatalErrors) elliptic.
 		nfe.AddError(errors.New("insecure curve (secp192r1) specified"))
 		return secp192r1()
 	}
+	if CustomIOIDToCurveFunc != nil {
+		return CustomIOIDToCurveFunc(oid)
+	}
+
 	return nil
 }
 
@@ -664,6 +709,9 @@ func OIDFromNamedCurve(curve elliptic.Curve) (asn1.ObjectIdentifier, bool) {
 		return OIDNamedCurveP521, true
 	case secp192r1():
 		return OIDNamedCurveP192, true
+	}
+	if CustomCurveToOIDFunc != nil {
+		return CustomCurveToOIDFunc(curve)
 	}
 
 	return nil, false
